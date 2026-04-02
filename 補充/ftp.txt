@@ -1,0 +1,11 @@
+# 上傳檔案 或 下載
+if( len(files) == 0):
+    print("銷售點尚未上傳營業資訊")
+else:
+    print("已有銷售檔案開始準備處理:")
+    for file in files:
+        print(f"檔名: {file}")
+        file_path = os.path.join("c:/dw/", file)
+        print(f"存檔路徑: {file_path}")
+        with open(file_path,"wb") as f:
+            ftp.retrbinary(f'RETR {file}', f.write)
