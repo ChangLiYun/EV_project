@@ -4,12 +4,13 @@ from sklearn.linear_model import LinearRegression
 import numpy as np
 import matplotlib
 matplotlib.rcParams['font.family'] = 'Microsoft JhengHei'  # 微軟正黑體
-matplotlib.rcParams['axes.unicode_minus'] = False
+matplotlib.rcParams['axes.unicode_minus'] = False #讓負號正常顯示
 
 # ── 1. 油價資料 ──────────────────────────────
 oil = pd.read_excel(r"D:\Users\User\Desktop\專題\EV_project\2010_2026國際原油價格.xlsx")
 oil['日期'] = pd.to_datetime(oil['日期'])
 oil['year'] = oil['日期'].dt.year
+#每年的平均油價
 oil_year = oil[oil['year'] <= 2024].groupby('year')['北海布蘭特'].mean().reset_index()
 oil_year.rename(columns={'北海布蘭特': 'oil_price'}, inplace=True)
 
@@ -18,7 +19,7 @@ ev = pd.read_excel(
     r"D:\Users\User\Desktop\專題\EV_project\EVDataExplorer2025.xlsx",
     sheet_name="GEVO_EV_2025"        # ← 要指定工作表
 )
-
+# 篩選
 ev_filtered = ev[
     (ev["parameter"] == "EV sales") &
     (ev["region_country"] == "World") &  # ← 正確欄位名稱
@@ -26,7 +27,7 @@ ev_filtered = ev[
     (ev["category"] == "Historical") &
     (ev["powertrain"].isin(["BEV", "PHEV"]))
 ]
-
+#把油價表和 EV 銷售表用「year」欄位合併
 ev_year = ev_filtered.groupby("year")["value"].sum().reset_index()
 ev_year.rename(columns={"value": "ev_sales"}, inplace=True)
 
@@ -42,9 +43,9 @@ y = df["ev_sales"]              # 依變數：EV 銷售量
 model = LinearRegression()
 model.fit(X, y)
 
-r2 = model.score(X, y)
-coef = model.coef_[0]
-intercept = model.intercept_
+r2 = model.score(X, y) # 計算 R²
+coef = model.coef_[0] # 斜率（每漲 1 美元，EV 變化多少輛）
+intercept = model.intercept_ # 截距（油價為 0 時的理論 EV 銷售量）
 
 print(f"\n迴歸結果：")
 print(f"  R²（解釋力）: {r2:.4f}")
@@ -96,4 +97,19 @@ print("\n圖表已儲存為 oil_ev_regression.png")
 2022 年：油價回升到 100美元，EV 是 1,020萬輛
 2023、2024 年：油價下降到 80美元，EV 卻繼續創新高
 這些點散落在圖的各個角落，迴歸線幾乎是水平的（斜率接近 0），代表不管油價高低，EV 銷售量都在成長，但成長的原因不是油價。
+
+研究問題：油價是否影響EV銷售？
+
+量化結果：
+  油價迴歸  R² = 0.002  →  油價解釋力不到0.2%
+  時間迴歸  R² = 0.704  →  結構性成長解釋70%
+
+結論：
+  EV市場成長主要由政策補貼、技術成熟、
+  消費習慣改變等長期結構因素驅動，
+  而非短期油價波動。
+  
+  2022年俄烏戰爭（油價飆升）同年EV爆發，
+  進一步說明能源安全意識才是關鍵觸媒，
+  而非價格訊號本身。
 '''
