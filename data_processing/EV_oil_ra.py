@@ -7,7 +7,7 @@ matplotlib.rcParams['font.family'] = 'Microsoft JhengHei'  # 微軟正黑體
 matplotlib.rcParams['axes.unicode_minus'] = False #讓負號正常顯示
 
 # ── 1. 油價資料 ──────────────────────────────
-oil = pd.read_excel(r"C:\Users\FM_pc\Desktop\專\EV_project\2010_01_04 ~ 2026_03_25國際原油價格.xlsx")
+oil = pd.read_excel(r"D:\Users\User\Desktop\專題\EV_project\2010_2026國際原油價格.xlsx")
 oil['日期'] = pd.to_datetime(oil['日期'])
 oil['year'] = oil['日期'].dt.year
 #每年的平均油價
@@ -16,7 +16,7 @@ oil_year.rename(columns={'北海布蘭特': 'oil_price'}, inplace=True)
 
 # ── 2. EV 銷售資料 ───────────────────────────
 ev = pd.read_excel(
-    r"C:\Users\FM_pc\Desktop\專\EV_project\EVDataExplorer2025.xlsx",
+    r"D:\Users\User\Desktop\專題\EV_project\EVDataExplorer2025.xlsx",
     sheet_name="GEVO_EV_2025"        # ← 要指定工作表
 )
 # 篩選
@@ -37,31 +37,29 @@ print("合併後資料：")
 print(df.to_string(index=False))
 
 # ── 4. 迴歸分析 ──────────────────────────────
-X = df[["oil_price"]]           # 自變數：油價
-y = df["ev_sales"]              # 依變數：EV 銷售量
+X = df[["oil_price"]]
+y_million = df["ev_sales"] / 1e6  # 統一用百萬輛當基準
 
 model = LinearRegression()
-model.fit(X, y)
+model.fit(X, y_million)
 
-r2 = model.score(X, y) # 計算 R²
+r2 = model.score(X, y_million) # 計算 R²
 coef = model.coef_[0] # 斜率（每漲 1 美元，EV 變化多少輛）
 intercept = model.intercept_ # 截距（油價為 0 時的理論 EV 銷售量）
 
-print(f"\n迴歸結果：")
-print(f"  R²（解釋力）: {r2:.4f}")
-print(f"  係數（斜率）: {coef:,.0f}")
-print(f"  截距: {intercept:,.0f}")
-print(f"\n解讀：油價每上漲1美元，EV銷售量變化 {coef:,.0f} 輛")
+print(f"\n迴歸結果（單位：百萬輛）：")
+print(f"  R²: {r2:.4f}")
+print(f"  斜率: {coef:.4f} (代表油價漲1元，EV多賣 {coef*100:.2f} 萬輛)")
 
-# ── 6. 以「年份」為自變數做迴歸（時間趨勢）──
+# ── 5. 以「年份」為自變數做迴歸（時間趨勢）──
 X_year = df[["year"]]
 model_year = LinearRegression()
-model_year.fit(X_year, y)
-r2_year = model_year.score(X_year, y)
+model_year.fit(X_year, y_million)
+r2_year = model_year.score(X_year, y_million)
 print(f"\n時間趨勢迴歸 R²: {r2_year:.4f}")
-print(f"解讀：EV銷售量每年平均增加 {model_year.coef_[0]/1e6:.2f} 百萬輛")
+print(f"解讀：EV銷售量每年平均增加 {model_year.coef_[0]:.2f} 百萬輛")
 
-# ── 5. 視覺化 ────────────────────────────────
+# ── 6. 視覺化 ────────────────────────────────
 fig, ax1 = plt.subplots(figsize=(12, 6))
 
 # 散佈圖 + 迴歸線
@@ -69,7 +67,7 @@ ax1.scatter(df["oil_price"], df["ev_sales"] / 1e6,
             color="#1D9E75", s=80, zorder=5, label="實際數據")
 
 x_range = np.linspace(df["oil_price"].min(), df["oil_price"].max(), 100)
-y_pred = model.predict(x_range.reshape(-1, 1)) / 1e6
+y_pred = model.predict(x_range.reshape(-1, 1))
 ax1.plot(x_range, y_pred, color="#E24B4A", linewidth=2,
          linestyle="--", label=f"迴歸線 (R²={r2:.3f})")
 

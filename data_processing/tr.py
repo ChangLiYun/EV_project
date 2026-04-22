@@ -1,93 +1,127 @@
 import pdfplumber
 import pandas as pd
 import os
-'''
-方法:
-1. 從 pdf 中取"表格結構"
-2. 收集每一行數據
-3. 看哪裡要改
-4. 匯出excel
-'''
-# pdf = pdfplumber.open(r"C:\Users\FM_pc\Desktop\專\EV_project\GlobalEVOutlook2025PolicyExplorer.pdf")
-# pdf.metadata
-# len(pdf.pages)
-# first_page = pdf.pages[0]
-#---------test-------
-# print("頁碼: ",first_page.page_number)
-# print("頁寬: ",first_page.width)
-# print("頁高: ",first_page.height)
+import re
 
-#-----------------------------------
-# 讀取內文
-# text = first_page.extract_table()
-#----------------------------------------
+
 def pdf_to_excel(pdf_path, excel_path):
-    all_rows = []
+    # 已知的分類值
+    regions = [
+        "Europe", "Africa", "Asia Pacific", "Central and South America",
+        "North America", "Southeast Asia", "Middle East", "Eurasia"
+    ]
+    levels = ["National", "Subnational", "Supranational", "Multi-national"]
+    policy_types = ["Legislation", "Proposal", "Announced target", "Objective"]
 
-    #打開pdf
+    all_text = ""
+
     with pdfplumber.open(pdf_path) as pdf:
-        print(f"pdf共{len(pdf.pages)}頁")
-        
+        print(f"PDF 共 {len(pdf.pages)} 頁")
+
         for page_num, page in enumerate(pdf.pages, start=1):
-            print(f'正在處理第{page_num}頁...')
+            print(f"正在處理第 {page_num} 頁...")
+            text = page.extract_text()
+            if text:
+                all_text += text + "\n"
 
-            tables = page.extract_tables() #提取當前中的表格
+    # 逐行解析
+    lines = [l.strip() for l in all_text.split('\n') if l.strip()]
 
-            if not tables:
-                continue
-            for t in tables:
-                for row in t:
-                    #跳過全空行 -->防止空行進入excel、防止生成一堆沒用變數
-                    if row and any(cell and cell.strip() for cell in row if isinstance(cell st) )
+    records = []
+    current = None
 
-        if not all_rows:
-            print("未提到任何表的數據資料")
-            return
-        #計算行數(統一列數用)
-        max_cols = max(len(row) for row in all_rows)
-        print(f"檢測到最大行數: {max_cols}")
+    skip_lines = [
+        "Global EV Outlook 2025 Policy Explorer",
+        "Region Country / Economy Policy Level Policy Type"
+    ]
 
-        #統一
-        normalized_rows = []
-        for row in all_rows:
-            if len(row) < max_cols:
-                #不足的補 None
-                row = row + [None] * (max_cols - len(row))
-            elif len(row) > max_cols:
-                row = row[:max_cols]
-            normalized_rows.append(row)
-        
-        # 第一行作為表頭
-        header = normalized_rows[0]
-        data = normalized_rows[1:]
+    for line in lines:
+        # 跳過標題行和頁碼行
+        if any(skip in line for skip in skip_lines):
+            continue
+        if re.match(r'^Page \d+ of \d+$', line):
+            continue
 
-        # 去掉重複表頭行
-        clean_data =[]
-        for r in data:
-            if r != header:
-                clean_data.append(row)
-        
-        # 構建 DataFrame
-        df =pd.DataFrame(clean_data, columns=header)
+        # 判斷是否是新記錄的開頭
+        found_region = None
+        for region in regions:
+            if line.startswith(region + " "):
+                found_region = region
+                break
 
-        # 清理空行、空列
-        df = df.dropna(how='all').dropna(axis=1, how="all")
+        if found_region:
+            # 儲存上一條記錄
+            if current and current.get('國家'):
+                records.append(current)
 
-        # 匯出 excel
-        df.to_excel(excel_path, index=False, engine='openpyxl')
+            rest = line[len(found_region):].strip()
 
-        print("\n 轉換完成")
-        print(f"資料行數: {len(df)}")
-        print(f"資料列數: {len(df.columns)}")
-        print(f"列名: ", list(df.columns))
-        print(f"\n前 5 行預覽:  ")
-        print(df.head())
+            # 找政策層級
+            found_level = None
+            found_country = None
+            for level in levels:
+                if level in rest:
+                    idx = rest.index(level)
+                    found_country = rest[:idx].strip()
+                    rest = rest[idx + len(level):].strip()
+                    found_level = level
+                    break
 
-if __name__=="__main__":
-    pdf_file = (r"C:\Users\FM_pc\Desktop\專\EV_project\GlobalEVOutlook2025PolicyExplorer.pdf")
-    excel_file = (r"C:\Users\FM_pc\Desktop\專\EV_project\GlobalEVPolicyExplorer.xlsx")
-    
+            # 找政策類型
+            found_type = None
+            for pt in policy_types:
+                if rest.startswith(pt):
+                    found_type = pt
+                    rest = rest[len(pt):].strip()
+                    break
+
+            current = {
+                '地區': found_region,
+                '國家': found_country or '',
+                '政策層級': found_level or '',
+                '政策類型': found_type or '',
+                '政策內容': rest,
+                '年份': ''
+            }
+
+        elif current:
+            # 繼續累積政策內容
+            current['政策內容'] += ' ' + line
+
+    # 儲存最後一筆
+    if current and current.get('國家'):
+        records.append(current)
+
+    if not records:
+        print("未解析到任何資料")
+        return
+
+    # 從政策內容提取年份
+    for r in records:
+        years = re.findall(r'\b(20\d{2})\b', r['政策內容'])
+        if years:
+            r['年份'] = years[0]  # 取第一個年份
+
+    # 建立 DataFrame
+    df = pd.DataFrame(records)
+    df = df[df['國家'] != '']  # 移除空白國家
+
+    # 匯出 Excel
+    df.to_excel(excel_path, index=False, engine='openpyxl')
+
+    print(f"\n轉換完成！")
+    print(f"總計 {len(df)} 筆政策記錄")
+    print(f"涵蓋國家數：{df['國家'].nunique()}")
+    print(f"欄位：{list(df.columns)}")
+    print(f"\n前 5 行預覽：")
+    print(df[['國家', '政策類型', '年份', '政策內容']].head().to_string(index=False))
+
+
+if __name__ == "__main__":
+    pdf_file = r"D:\Users\User\Desktop\專題\EV_project\GlobalEVOutlook2025PolicyExplorer.pdf"
+    excel_file = r"D:\Users\User\Desktop\專題\EV_project\GlobalEVPolicyExplorer.xlsx"
+
     if not os.path.exists(pdf_file):
-        print(f'找不到 pdf 文件: {pdf_file}')
+        print(f"找不到 PDF 檔案：{pdf_file}")
     else:
         pdf_to_excel(pdf_file, excel_file)
